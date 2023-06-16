@@ -23,6 +23,17 @@
 #define ROW_LENGHT 1000 /* */
 #define FILE_SIZE 9924
 
+#define LECTURA 0
+#define ESCRITURA 1
+
+void file_create_write_line(char *filename, char *text)
+{
+  FILE *f;
+  f = fopen(filename, "a");
+  fprintf(f, "%s", text);
+  fclose(f);
+}
+
 /**
  * @brief Captura los argumentos proporcionados por consola.
  *
@@ -110,27 +121,32 @@ char *find_token(char *row, int col_number)
  * @param total_lineas  Total de lineas a leer del archivo
  * @warning Esta función NO se ha probado con valores de total_lineas < 0 y total_lineas > 10000.
  */
-void read_lines(FILE *fp, Vehiculo vehiculos[], int total_lineas)
+void read_lines(FILE *fp, Vehiculo vehiculos[], int total_lineas, int start, int end, int worker_id)
 {
+  rewind(fp);
   char row[FILE_SIZE];
-  int i = 0;
-  while (fgets(row, FILE_SIZE, fp) != NULL)
+  char filename[100];
+  int vehicle_idx = 0;
+  for (int i = 0; fgets(row, FILE_SIZE, fp) != NULL; i++)
   {
     if (i == 0)
     {
-      i++;
       continue;
     }
 
-    if (i > total_lineas)
+    if (i > start && i <= end)
+    {
+      vehiculos[vehicle_idx].grupo_vehiculo = find_token(row, 1);
+      vehiculos[vehicle_idx].tasacion = atof(find_token(row, 6));
+      vehiculos[vehicle_idx].valor_pagado = atof(find_token(row, 11));
+      vehiculos[vehicle_idx].puertas = atoi(find_token(row, 23));
+      vehicle_idx++;
+    }
+
+    if (i > end)
     {
       break;
     }
-    vehiculos[i - 1].grupo_vehiculo = find_token(row, 1);
-    vehiculos[i - 1].tasacion = atof(find_token(row, 6));
-    vehiculos[i - 1].valor_pagado = atof(find_token(row, 11));
-    vehiculos[i - 1].puertas = atoi(find_token(row, 23));
-    i++;
   }
 }
 
@@ -169,18 +185,49 @@ void head_mapeo(int n, Map map[])
   }
 }
 
+void divide_array(int workers, int worker_number, int *chunk_position)
+{
+  int chunk_size = 1000 / workers;
+  int start = worker_number * chunk_size;
+  int end = start + chunk_size;
+
+  chunk_position[0] = start;
+  chunk_position[1] = end;
+}
+
 int main(int argc, char const *argv[])
 {
+  pid_t pid;
+  int end_line = 200;
   Coordinador coordinador;
   get_flags(argc, argv, &coordinador);
   FILE *file = read_file(coordinador.nombre_archivo);
-  Vehiculo vehiculos[coordinador.total_lineas];
-  read_lines(file, vehiculos, coordinador.total_lineas);
-  Map *tasaciones = map_tasaciones(vehiculos, coordinador.total_lineas);
-  Map *valor_pagado = map_valor_pagado(vehiculos, coordinador.total_lineas);
-  Map *puertas = map_puertas(vehiculos, coordinador.total_lineas);
-  reduce_tasacion(tasaciones, coordinador.verbose, coordinador.total_lineas);
-  reduce_valor_pagado(valor_pagado, coordinador.verbose, coordinador.total_lineas);
-  reduce_puertas(puertas, coordinador.verbose, coordinador.total_lineas);
+
+  int chunk[2];
+
+  for (int i = 0; i < 5; i++)
+  {
+    pid = fork();
+    if (pid == 0)
+    {
+      Vehiculo vehiculos[coordinador.total_lineas];
+      divide_array(5, i, chunk);
+      read_lines(file, vehiculos, coordinador.total_lineas, chunk[0], chunk[1], i);
+      exit(0);
+    }
+    else
+    {
+      end_line += 200;
+      int status;
+      waitpid(pid, &status, 0);
+    }
+  }
+
+  // Map *tasaciones = map_tasaciones(vehiculos, coordinador.total_lineas);
+  // Map *valor_pagado = map_valor_pagado(vehiculos, coordinador.total_lineas);
+  // Map *puertas = map_puertas(vehiculos, coordinador.total_lineas);
+  // reduce_tasacion(tasaciones, coordinador.verbose, coordinador.total_lineas);
+  // reduce_valor_pagado(valor_pagado, coordinador.verbose, coordinador.total_lineas);
+  // reduce_puertas(puertas, coordinador.verbose, coordinador.total_lineas);
   return 0;
 }
