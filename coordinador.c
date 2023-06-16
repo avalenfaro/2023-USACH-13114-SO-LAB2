@@ -15,9 +15,9 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <unistd.h>
+#include <sys/wait.h>
+#include <sys/types.h>
 
-#include "map.h"
-#include "reduce.h"
 #include "coordinador.h"
 
 #define ROW_LENGHT 1000 /* */
@@ -25,6 +25,11 @@
 
 #define LECTURA 0
 #define ESCRITURA 1
+
+void create_process(int *pid)
+{
+  *pid = fork();
+}
 
 void file_create_write_line(char *filename, char *text)
 {
@@ -45,7 +50,7 @@ void get_flags(int argc, char const *argv[], Coordinador *c)
 {
   int opt;
   c->verbose = 0;
-  while ((opt = getopt(argc, (char *const *)argv, "i:c:d")) != -1)
+  while ((opt = getopt(argc, (char *const *)argv, "i:c:n:d")) != -1)
   {
     switch (opt)
     {
@@ -58,8 +63,12 @@ void get_flags(int argc, char const *argv[], Coordinador *c)
     case 'd':
       c->verbose = 1;
       break;
+    case 'n':
+      c->n = atoi(optarg);
+      break;
     case '?':
       printf("No existe el flag %c\n", optopt);
+      break;
     default:
       abort();
     }
@@ -121,11 +130,9 @@ char *find_token(char *row, int col_number)
  * @param total_lineas  Total de lineas a leer del archivo
  * @warning Esta función NO se ha probado con valores de total_lineas < 0 y total_lineas > 10000.
  */
-void read_lines(FILE *fp, Vehiculo vehiculos[], int total_lineas, int start, int end, int worker_id)
+void read_lines(FILE *fp, Vehiculo vehiculos[], int total_lineas, int start, int end)
 {
-  rewind(fp);
   char row[FILE_SIZE];
-  char filename[100];
   int vehicle_idx = 0;
   for (int i = 0; fgets(row, FILE_SIZE, fp) != NULL; i++)
   {
@@ -136,7 +143,7 @@ void read_lines(FILE *fp, Vehiculo vehiculos[], int total_lineas, int start, int
 
     if (i > start && i <= end)
     {
-      vehiculos[vehicle_idx].grupo_vehiculo = find_token(row, 1);
+      strcpy(vehiculos[vehicle_idx].grupo_vehiculo, find_token(row, 1));
       vehiculos[vehicle_idx].tasacion = atof(find_token(row, 6));
       vehiculos[vehicle_idx].valor_pagado = atof(find_token(row, 11));
       vehiculos[vehicle_idx].puertas = atoi(find_token(row, 23));
@@ -156,7 +163,7 @@ void read_lines(FILE *fp, Vehiculo vehiculos[], int total_lineas, int start, int
  * @param n         Numero de filas
  * @param vehiculos Arreglo de vehiculos
  */
-void head_vehiculos(int n, Vehiculo vehiculos[])
+void head_vehiculos(int n, Vehiculo *vehiculos)
 {
   for (int i = 0; i < n; i++)
   {
@@ -168,22 +175,22 @@ void head_vehiculos(int n, Vehiculo vehiculos[])
   }
 }
 
-/**
- * @brief Función utilitaria para leer las n primeras filas de un arreglo de mapeos.
- *
- * @param n   Numero de filas
- * @param map Arreglo de mapeos
- */
-void head_mapeo(int n, Map map[])
-{
-  for (int i = 0; i < n; i++)
-  {
-    printf("grupo vehiculo: %.2f\n", map[i].vehiculo_liviano);
-    printf("carga: %.2f\n", map[i].carga);
-    printf("transporte publico: %.2f\n", map[i].transporte_publico);
-    printf("--------------------\n");
-  }
-}
+// /**
+//  * @brief Función utilitaria para leer las n primeras filas de un arreglo de mapeos.
+//  *
+//  * @param n   Numero de filas
+//  * @param map Arreglo de mapeos
+//  */
+// void head_mapeo(int n, Map map[])
+// {
+//   for (int i = 0; i < n; i++)
+//   {
+//     printf("grupo vehiculo: %.2f\n", map[i].vehiculo_liviano);
+//     printf("carga: %.2f\n", map[i].carga);
+//     printf("transporte publico: %.2f\n", map[i].transporte_publico);
+//     printf("--------------------\n");
+//   }
+// }
 
 void divide_array(int workers, int worker_number, int *chunk_position)
 {
@@ -198,29 +205,59 @@ void divide_array(int workers, int worker_number, int *chunk_position)
 int main(int argc, char const *argv[])
 {
   pid_t pid;
-  int end_line = 200;
   Coordinador coordinador;
   get_flags(argc, argv, &coordinador);
-  FILE *file = read_file(coordinador.nombre_archivo);
+  int pipes[coordinador.n][2];
+
+  for (int i = 0; i < coordinador.n; i++)
+  {
+    if (pipe(pipes[i]) < 0)
+    {
+      fprintf(stderr, "Error al crear el pipe %d\n", i);
+      exit(1);
+    }
+  }
+
+  for (int i = 0; i < coordinador.n; i++)
+  {
+    pid_t pid = fork();
+    if (pid == 0)
+    {
+      Vehiculo *vehiculos = (Vehiculo *)malloc(sizeof(Vehiculo *) * coordinador.total_lineas);
+      char *grupo = (char *)malloc(sizeof(char) * coordinador.total_lineas);
+      close(pipes[i][ESCRITURA]);
+      read(pipes[i][LECTURA], vehiculos, sizeof(Vehiculo) * 10000);
+      free(vehiculos);
+      exit(0);
+    }
+    else if (pid < 0)
+    {
+      fprintf(stderr, "Error al crear el proceso hijo %d\n", i + 1);
+      exit(1);
+    }
+  }
 
   int chunk[2];
 
-  for (int i = 0; i < 5; i++)
+  // Enviar datos a cada hijo a través de los pipes
+  for (int i = 0; i < coordinador.n; i++)
   {
-    pid = fork();
-    if (pid == 0)
-    {
-      Vehiculo vehiculos[coordinador.total_lineas];
-      divide_array(5, i, chunk);
-      read_lines(file, vehiculos, coordinador.total_lineas, chunk[0], chunk[1], i);
-      exit(0);
-    }
-    else
-    {
-      end_line += 200;
-      int status;
-      waitpid(pid, &status, 0);
-    }
+    Vehiculo *vehiculos = (Vehiculo *)malloc(sizeof(Vehiculo *) * coordinador.total_lineas);
+
+    FILE *file = read_file(coordinador.nombre_archivo);
+    divide_array(coordinador.n, i, chunk);
+    read_lines(file, vehiculos, coordinador.total_lineas, chunk[0], chunk[1]);
+
+    write(pipes[i][ESCRITURA], vehiculos, sizeof(Vehiculo) * coordinador.total_lineas);
+    close(pipes[i][ESCRITURA]); // Cerrar el extremo de escritura del pipe en el padre
+
+    free(vehiculos);
+  }
+
+  // Esperar a que todos los hijos terminen
+  for (int i = 0; i < coordinador.n; i++)
+  {
+    wait(0);
   }
 
   // Map *tasaciones = map_tasaciones(vehiculos, coordinador.total_lineas);
