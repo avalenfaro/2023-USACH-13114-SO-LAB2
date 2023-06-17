@@ -31,14 +31,6 @@ void create_process(int *pid)
   *pid = fork();
 }
 
-void file_create_write_line(char *filename, char *text)
-{
-  FILE *f;
-  f = fopen(filename, "a");
-  fprintf(f, "%s", text);
-  fclose(f);
-}
-
 /**
  * @brief Captura los argumentos proporcionados por consola.
  *
@@ -130,7 +122,7 @@ char *find_token(char *row, int col_number)
  * @param total_lineas  Total de lineas a leer del archivo
  * @warning Esta función NO se ha probado con valores de total_lineas < 0 y total_lineas > 10000.
  */
-void read_lines(FILE *fp, Vehiculo vehiculos[], int total_lineas, int start, int end)
+void read_lines(FILE *fp, Vehiculo *vehiculos, int total_lineas, int start, int end)
 {
   char row[FILE_SIZE];
   int vehicle_idx = 0;
@@ -144,8 +136,8 @@ void read_lines(FILE *fp, Vehiculo vehiculos[], int total_lineas, int start, int
     if (i > start && i <= end)
     {
       strcpy(vehiculos[vehicle_idx].grupo_vehiculo, find_token(row, 1));
-      vehiculos[vehicle_idx].tasacion = atof(find_token(row, 6));
-      vehiculos[vehicle_idx].valor_pagado = atof(find_token(row, 11));
+      vehiculos[vehicle_idx].tasacion = atoi(find_token(row, 6));
+      vehiculos[vehicle_idx].valor_pagado = atoi(find_token(row, 11));
       vehiculos[vehicle_idx].puertas = atoi(find_token(row, 23));
       vehicle_idx++;
     }
@@ -168,8 +160,8 @@ void head_vehiculos(int n, Vehiculo *vehiculos)
   for (int i = 0; i < n; i++)
   {
     printf("grupo vehiculo: %s\n", vehiculos[i].grupo_vehiculo);
-    printf("tasacion: %.2f\n", vehiculos[i].tasacion);
-    printf("valor pagado: %.2f\n", vehiculos[i].valor_pagado);
+    printf("tasacion: %i\n", vehiculos[i].tasacion);
+    printf("valor pagado: %i\n", vehiculos[i].valor_pagado);
     printf("puertas: %d\n", vehiculos[i].puertas);
     printf("--------------------\n");
   }
@@ -204,7 +196,6 @@ void divide_array(int workers, int worker_number, int *chunk_position)
 
 int main(int argc, char const *argv[])
 {
-  pid_t pid;
   Coordinador coordinador;
   get_flags(argc, argv, &coordinador);
   int pipes[coordinador.n][2];
@@ -226,7 +217,12 @@ int main(int argc, char const *argv[])
       Vehiculo *vehiculos = (Vehiculo *)malloc(sizeof(Vehiculo *) * coordinador.total_lineas);
       char *grupo = (char *)malloc(sizeof(char) * coordinador.total_lineas);
       close(pipes[i][ESCRITURA]);
-      read(pipes[i][LECTURA], vehiculos, sizeof(Vehiculo) * 10000);
+      dup2(pipes[i][LECTURA], STDIN_FILENO);
+      char *argv[] = {NULL};
+      char buffer[64];
+      snprintf(buffer, sizeof buffer, "%d", i);
+      char *envp[] = {buffer, NULL};
+      execve("./map", argv, envp);
       free(vehiculos);
       exit(0);
     }

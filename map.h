@@ -3,17 +3,17 @@
 
 typedef struct
 {
-  char *grupo_vehiculo;
-  float tasacion;
-  float valor_pagado;
+  char grupo_vehiculo[20];
+  int tasacion;
+  int valor_pagado;
   int puertas;
 } Vehiculo;
 
 typedef struct
 {
-  float vehiculo_liviano;
-  float carga;
-  float transporte_publico;
+  int vehiculo_liviano;
+  int carga;
+  int transporte_publico;
 } Map;
 
 Map *map_tasaciones(Vehiculo vehiculos[], int total_lineas);

@@ -12,6 +12,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <sys/types.h>
+#include <stdbool.h>
 
 #include "map.h"
 
@@ -29,7 +33,7 @@ const char *TRANSPORTE_PUBLICO_KEY = "Transporte Publico";
  * @param total_lineas  Total de lineas a mapear
  * @return Map*
  */
-Map *map_tasaciones(Vehiculo vehiculos[], int total_lineas)
+Map *map_tasaciones(Vehiculo *vehiculos, int total_lineas)
 {
   Map *map_tasacion = (Map *)malloc(sizeof(Map) * total_lineas);
   for (int i = 0; i < total_lineas; i++)
@@ -113,4 +117,43 @@ Map *map_puertas(Vehiculo vehiculos[], int total_lineas)
   }
 
   return map_puertas;
+}
+
+void file_create_write_line(char *filename, char *text)
+{
+  FILE *f;
+  f = fopen(filename, "a");
+  fprintf(f, "%s", text);
+  fclose(f);
+}
+
+void write_to_file(Map *map, int chunk_size, char *filename)
+{
+  for (int i = 0; i < chunk_size; i++)
+  {
+    int vehiculo_liviano = map[i].vehiculo_liviano;
+    int carga = map[i].carga;
+    int transporte_publico = map[i].transporte_publico;
+
+    char buffer[30];
+    snprintf(buffer, sizeof buffer, "%d;%d;%d;\n", vehiculo_liviano, carga, transporte_publico);
+
+    file_create_write_line(filename, buffer);
+  }
+}
+
+int main(int argc, char const *argv[])
+{
+  Vehiculo *vehiculos = (Vehiculo *)malloc(sizeof(Vehiculo) * 1000);
+  read(STDIN_FILENO, vehiculos, sizeof(Vehiculo) * 1000);
+
+  Map *tasaciones = map_tasaciones(vehiculos, 200);
+  Map *valor_pagado = map_valor_pagado(vehiculos, 200);
+  Map *puertas = map_puertas(vehiculos, 200);
+
+  write_to_file(tasaciones, 200, "tasaciones.csv");
+  write_to_file(valor_pagado, 200, "valor_pagado.csv");
+  write_to_file(puertas, 200, "puertas.csv");
+
+  return 0;
 }
