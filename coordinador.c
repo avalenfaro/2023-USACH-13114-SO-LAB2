@@ -184,9 +184,9 @@ void head_vehiculos(int n, Vehiculo *vehiculos)
 //   }
 // }
 
-void divide_array(int workers, int worker_number, int *chunk_position)
+void divide_array(int workers, int worker_number, int *chunk_position, int file_size)
 {
-  int chunk_size = 1000 / workers;
+  int chunk_size = file_size / workers;
   int start = worker_number * chunk_size;
   int end = start + chunk_size;
 
@@ -214,16 +214,37 @@ int main(int argc, char const *argv[])
     pid_t pid = fork();
     if (pid == 0)
     {
-      Vehiculo *vehiculos = (Vehiculo *)malloc(sizeof(Vehiculo *) * coordinador.total_lineas);
-      char *grupo = (char *)malloc(sizeof(char) * coordinador.total_lineas);
-      close(pipes[i][ESCRITURA]);
-      dup2(pipes[i][LECTURA], STDIN_FILENO);
+
+      if (close(pipes[i][ESCRITURA]) == -1)
+      {
+        perror("Error en close:");
+        exit(1);
+      }
+
+      if (dup2(pipes[i][LECTURA], STDIN_FILENO) == -1)
+      {
+        perror("Falló dup2:");
+        exit(1);
+      }
+
       char *argv[] = {NULL};
-      char buffer[64];
-      snprintf(buffer, sizeof buffer, "%d", i);
-      char *envp[] = {buffer, NULL};
-      execve("./map", argv, envp);
-      free(vehiculos);
+
+      char file_size[100];
+      char chunk_size[100];
+      char worker_id[100];
+
+      snprintf(file_size, sizeof file_size, "%d", coordinador.total_lineas);
+      snprintf(chunk_size, sizeof chunk_size, "%d", coordinador.total_lineas / coordinador.n);
+      snprintf(worker_id, sizeof worker_id, "%d", i);
+
+      char *envp[] = {file_size, chunk_size, worker_id, NULL};
+
+      if (execve("./map", argv, envp) == -1)
+      {
+        perror("Falló exceve");
+        exit(1);
+      }
+
       exit(0);
     }
     else if (pid < 0)
@@ -238,10 +259,10 @@ int main(int argc, char const *argv[])
   // Enviar datos a cada hijo a través de los pipes
   for (int i = 0; i < coordinador.n; i++)
   {
-    Vehiculo *vehiculos = (Vehiculo *)malloc(sizeof(Vehiculo *) * coordinador.total_lineas);
+    Vehiculo *vehiculos = (Vehiculo *)malloc(sizeof(Vehiculo) * coordinador.total_lineas);
 
     FILE *file = read_file(coordinador.nombre_archivo);
-    divide_array(coordinador.n, i, chunk);
+    divide_array(coordinador.n, i, chunk, coordinador.total_lineas);
     read_lines(file, vehiculos, coordinador.total_lineas, chunk[0], chunk[1]);
 
     write(pipes[i][ESCRITURA], vehiculos, sizeof(Vehiculo) * coordinador.total_lineas);

@@ -144,16 +144,33 @@ void write_to_file(Map *map, int chunk_size, char *filename)
 
 int main(int argc, char const *argv[])
 {
-  Vehiculo *vehiculos = (Vehiculo *)malloc(sizeof(Vehiculo) * 1000);
-  read(STDIN_FILENO, vehiculos, sizeof(Vehiculo) * 1000);
+  int file_size = atoi(argv[1]);
+  int chunk_size = atoi(argv[2]);
+  int worker_id = atoi(argv[3]);
 
-  Map *tasaciones = map_tasaciones(vehiculos, 200);
-  Map *valor_pagado = map_valor_pagado(vehiculos, 200);
-  Map *puertas = map_puertas(vehiculos, 200);
+  Vehiculo *vehiculos = (Vehiculo *)malloc(sizeof(Vehiculo) * file_size);
+  if (read(STDIN_FILENO, vehiculos, sizeof(Vehiculo) * file_size) == -1)
+  {
+    perror("Error en read:");
+    exit(1);
+  }
 
-  write_to_file(tasaciones, 200, "tasaciones.csv");
-  write_to_file(valor_pagado, 200, "valor_pagado.csv");
-  write_to_file(puertas, 200, "puertas.csv");
+  for (int i = 0; i < 200; i++)
+  {
+    printf("grupo vehiculo: %s\n", vehiculos[i].grupo_vehiculo);
+    printf("tasacion: %i\n", vehiculos[i].tasacion);
+    printf("valor pagado: %i\n", vehiculos[i].valor_pagado);
+    printf("puertas: %d\n", vehiculos[i].puertas);
+    printf("--------------------\n");
+  }
+
+  Map *tasaciones = map_tasaciones(vehiculos, chunk_size);
+  Map *valor_pagado = map_valor_pagado(vehiculos, chunk_size);
+  Map *puertas = map_puertas(vehiculos, chunk_size);
+
+  write_to_file(tasaciones, chunk_size, "input_files/tasaciones.csv");
+  write_to_file(valor_pagado, chunk_size, "input_files/valor_pagado.csv");
+  write_to_file(puertas, chunk_size, "input_files/puertas.csv");
 
   return 0;
 }

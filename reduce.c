@@ -13,6 +13,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <errno.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <sys/types.h>
 
 #include "map.h"
 #define ROW_LENGHT 1000
@@ -132,4 +136,35 @@ void reduce_puertas(Map *puertas, int verbose, int total_lineas)
     printf("Total de vehiculos con 4 puertas para Transporte Publico: %d\n", trans_publico_4);
     printf("Total de vehiculos con 5 puertas para Transporte Publico: %d\n", trans_publico_5);
   }
+}
+
+FILE *read_file(char nombre_archivo[])
+{
+  FILE *fp = fopen((const char *)nombre_archivo, "r");
+  int errnum;
+  if (fp == NULL)
+  {
+    errnum = errno;
+    printf("Error al abrir el archivo: %s\n", strerror(errnum));
+    exit(-1);
+  }
+
+  return fp;
+}
+
+int main(int argc, char const *argv[])
+{
+  FILE *tfp = read_file("tasaciones.csv");
+  FILE *vpfp = read_file("valor_pagado.csv");
+  FILE *pfp = read_file("puertas.csv");
+
+  int start = atoi(argv[1]);
+  int end = atoi(argv[2]);
+  int file_size = atoi(argv[3]);
+
+  Map *map_tasaciones = (Map *)malloc(sizeof(Map) * file_size);
+  Map *map_valor_pagado = (Map *)malloc(sizeof(Map) * file_size);
+  Map *map_puertas = (Map *)malloc(sizeof(Map) * file_size);
+
+  return 0;
 }
