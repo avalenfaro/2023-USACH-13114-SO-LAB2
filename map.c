@@ -155,15 +155,6 @@ int main(int argc, char const *argv[])
     exit(1);
   }
 
-  for (int i = 0; i < 200; i++)
-  {
-    printf("grupo vehiculo: %s\n", vehiculos[i].grupo_vehiculo);
-    printf("tasacion: %i\n", vehiculos[i].tasacion);
-    printf("valor pagado: %i\n", vehiculos[i].valor_pagado);
-    printf("puertas: %d\n", vehiculos[i].puertas);
-    printf("--------------------\n");
-  }
-
   Map *tasaciones = map_tasaciones(vehiculos, chunk_size);
   Map *valor_pagado = map_valor_pagado(vehiculos, chunk_size);
   Map *puertas = map_puertas(vehiculos, chunk_size);

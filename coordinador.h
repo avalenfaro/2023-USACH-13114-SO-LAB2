@@ -4,6 +4,7 @@ typedef struct
   int total_lineas;
   int verbose;
   int n;
+  int m;
 } Coordinador;
 
 typedef struct

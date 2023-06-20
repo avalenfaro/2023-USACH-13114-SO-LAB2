@@ -42,7 +42,7 @@ void get_flags(int argc, char const *argv[], Coordinador *c)
 {
   int opt;
   c->verbose = 0;
-  while ((opt = getopt(argc, (char *const *)argv, "i:c:n:d")) != -1)
+  while ((opt = getopt(argc, (char *const *)argv, "i:c:n:m:d")) != -1)
   {
     switch (opt)
     {
@@ -57,6 +57,9 @@ void get_flags(int argc, char const *argv[], Coordinador *c)
       break;
     case 'n':
       c->n = atoi(optarg);
+      break;
+    case 'm':
+      c->m = atoi(optarg);
       break;
     case '?':
       printf("No existe el flag %c\n", optopt);
@@ -167,23 +170,6 @@ void head_vehiculos(int n, Vehiculo *vehiculos)
   }
 }
 
-// /**
-//  * @brief Función utilitaria para leer las n primeras filas de un arreglo de mapeos.
-//  *
-//  * @param n   Numero de filas
-//  * @param map Arreglo de mapeos
-//  */
-// void head_mapeo(int n, Map map[])
-// {
-//   for (int i = 0; i < n; i++)
-//   {
-//     printf("grupo vehiculo: %.2f\n", map[i].vehiculo_liviano);
-//     printf("carga: %.2f\n", map[i].carga);
-//     printf("transporte publico: %.2f\n", map[i].transporte_publico);
-//     printf("--------------------\n");
-//   }
-// }
-
 void divide_array(int workers, int worker_number, int *chunk_position, int file_size)
 {
   int chunk_size = file_size / workers;
@@ -202,29 +188,30 @@ int main(int argc, char const *argv[])
 
   for (int i = 0; i < coordinador.n; i++)
   {
-    if (pipe(pipes[i]) < 0)
+    if (pipe(pipes[i]) == -1)
     {
-      fprintf(stderr, "Error al crear el pipe %d\n", i);
-      exit(1);
+      perror("Error al crear el pipe");
+      exit(EXIT_FAILURE);
     }
   }
 
   for (int i = 0; i < coordinador.n; i++)
   {
+    fflush(stdout);
     pid_t pid = fork();
+
     if (pid == 0)
     {
-
       if (close(pipes[i][ESCRITURA]) == -1)
       {
-        perror("Error en close:");
-        exit(1);
+        perror("Error en close");
+        exit(EXIT_FAILURE);
       }
 
       if (dup2(pipes[i][LECTURA], STDIN_FILENO) == -1)
       {
-        perror("Falló dup2:");
-        exit(1);
+        perror("Falló dup2");
+        exit(EXIT_FAILURE);
       }
 
       char *argv[] = {NULL};
@@ -242,30 +229,28 @@ int main(int argc, char const *argv[])
       if (execve("./map", argv, envp) == -1)
       {
         perror("Falló exceve");
-        exit(1);
+        exit(EXIT_FAILURE);
       }
 
-      exit(0);
+      exit(EXIT_SUCCESS);
     }
     else if (pid < 0)
     {
-      fprintf(stderr, "Error al crear el proceso hijo %d\n", i + 1);
-      exit(1);
+      perror("Error en fork:");
+      exit(EXIT_FAILURE);
     }
   }
 
-  int chunk[2];
-
-  // Enviar datos a cada hijo a través de los pipes
   for (int i = 0; i < coordinador.n; i++)
   {
-    Vehiculo *vehiculos = (Vehiculo *)malloc(sizeof(Vehiculo) * coordinador.total_lineas);
+    int chunk[2];
+    Vehiculo *vehiculos = (Vehiculo *)malloc(sizeof(Vehiculo *) * coordinador.total_lineas);
 
     FILE *file = read_file(coordinador.nombre_archivo);
     divide_array(coordinador.n, i, chunk, coordinador.total_lineas);
     read_lines(file, vehiculos, coordinador.total_lineas, chunk[0], chunk[1]);
 
-    write(pipes[i][ESCRITURA], vehiculos, sizeof(Vehiculo) * coordinador.total_lineas);
+    write(pipes[i][ESCRITURA], vehiculos, sizeof(Vehiculo *) * coordinador.total_lineas);
     close(pipes[i][ESCRITURA]); // Cerrar el extremo de escritura del pipe en el padre
 
     free(vehiculos);
@@ -277,11 +262,53 @@ int main(int argc, char const *argv[])
     wait(0);
   }
 
-  // Map *tasaciones = map_tasaciones(vehiculos, coordinador.total_lineas);
-  // Map *valor_pagado = map_valor_pagado(vehiculos, coordinador.total_lineas);
-  // Map *puertas = map_puertas(vehiculos, coordinador.total_lineas);
-  // reduce_tasacion(tasaciones, coordinador.verbose, coordinador.total_lineas);
-  // reduce_valor_pagado(valor_pagado, coordinador.verbose, coordinador.total_lineas);
-  // reduce_puertas(puertas, coordinador.verbose, coordinador.total_lineas);
+  for (int i = 0; i < coordinador.m; i++)
+  {
+    fflush(stdout);
+
+    pid_t pid = fork();
+    if (pid == 0)
+    {
+
+      printf("Hola");
+      char *argv[] = {NULL};
+
+      int chunk[2];
+
+      divide_array(coordinador.m, i, chunk, coordinador.total_lineas);
+
+      char start[100];
+      char end[100];
+      char chunk_size[1000];
+      char verbose[100];
+      char worker_number[100];
+
+      snprintf(start, sizeof start, "%d", chunk[0]);
+      snprintf(end, sizeof end, "%d", chunk[1]);
+      snprintf(chunk_size, sizeof chunk_size, "%d", coordinador.total_lineas / coordinador.m);
+      snprintf(verbose, sizeof verbose, "%d", coordinador.verbose);
+      snprintf(worker_number, sizeof worker_number, "%d", i);
+
+      char *envp[] = {start, end, chunk_size, verbose, worker_number, NULL};
+
+      if (execve("./reduce", argv, envp) == -1)
+      {
+        perror("execve");
+        exit(EXIT_FAILURE);
+      }
+    }
+    else if (pid < 0)
+    {
+      perror("Error en fork:");
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  // Esperar a que todos los hijos terminen
+  for (int i = 0; i < coordinador.m; i++)
+  {
+    wait(0);
+  }
+
   return 0;
 }
